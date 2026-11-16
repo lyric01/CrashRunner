@@ -4,6 +4,7 @@ extends Node
 
 # --- 판 사이에 유지되는 값 ---
 var party: Array = ["bear"]                 # 고른 캐릭터
+var drift_mult := 1.0                        # 강화 '자석': 흩어진 몬스터가 돌아오는 속도 배율
 var skip_select := false                     # "다시 하기"는 캐릭터 선택을 건너뛰어요
 
 # --- 공통 ---
@@ -28,7 +29,6 @@ const ATTACK_LUNGE := 0.0               # 휘두르며 앞으로 튀어나가는
 const ATTACK_REACH := 230.0             # 몸 앞쪽 판정 폭(돌진이 없어진 만큼 넓혔어요)
 
 # --- 스테이지 ---
-const ROAD_DURATION := 60.0             # 한 판 길이(초)
 const ROAD_SCROLL_SPEED := 520.0        # px/초
 const SPAWN_INTERVAL_MIN := 1.0         # 무리와 무리 사이 간격(초). 줄일수록 빽빽해요
 const SPAWN_INTERVAL_MAX := 1.5
@@ -78,7 +78,7 @@ const BAT_SPEED := 90.0                 # 땅의 속도에 더해 다가오는 �
 
 # 뭉치(뭉친 몬스터)
 const AMMO_DAMAGE := {"orc": 3.0, "slime": 1.0, "bat": 2.0}   # 강적에게 주는 기본 피해
-const AMMO_WEAR := {"orc": 1.0, "slime": 1.0, "bat": 1.0}     # 부딪힐 때마다 닳는 자기 체력(0이 되면 터짐)
+const AMMO_WEAR := {"orc": 2.0, "slime": 1.0, "bat": 1.0}     # 부딪힐 때마다 닳는 자기 체력(0이 되면 터짐)
 const SHOT_VX := 2000.0                 # 쳐서 보낸 뭉치의 속도
 const SHOT_TIMEOUT := 1.3               # 이 시간 안에 못 맞히면 되돌아와요
 const REBOUND_GROGGY := 3.0             # 튕겨 돌아온 뒤 그로기 시간(초)
@@ -110,13 +110,33 @@ const HEAT_DECAY := 0.5                 # 초당 식는 양
 const HEAT_DMG := 0.2                   # 열기 1마다 피해 +20%
 const HEAT_SPEED := 0.04                # 열기 1마다 보내는 속도 +4%
 
+# 말풍선(재미용, 규칙과는 무관): 뭉친 몬스터들이 신음을 흘려요.
+const BUBBLES := true                   # false면 말풍선을 끔
+const BUBBLE_MAX := 4                   # 동시에 뜨는 최대 개수
+const BUBBLE_TIME := 1.2                # 한 말풍선이 떠 있는 시간(초)
+const BUBBLE_IDLE_MIN := 0.5            # 가만히 튀는 동안 혼잣말이 나오는 간격(초)
+const BUBBLE_IDLE_MAX := 1.3
+
 # 강적
 const ELITE_HP := 600.0
 const ELITE_APPROACH := 110.0           # 화면에서 다가오는 속도(px/초). 선두에 닿으면 패배
 const ELITE_FIRST := 12.0               # 첫 강적 등장 시각(초)
 const ELITE_INTERVAL := 16.0            # 강적을 잡은 뒤 다음 등장까지(초)
 const ELITE_WARN := 3.0                 # 등장 예고 시간(초)
-const STAGE_ELITE_HP_GROWTH := 0.25     # 스테이지가 오를 때마다 강적 체력 +25%
+const STAGE_ELITE_HP_GROWTH := 0.4      # 스테이지가 오를 때마다 강적 체력 +40%
+const ELITE_ORDER_HP_GROWTH := 0.15     # 같은 스테이지 안에서 다음 강적은 +15%
+
+# 한 판의 구조: 스테이지 5개, 스테이지마다 강적 3번. 마지막 강적을 잡아야 다음으로 넘어가요.
+const STAGE_COUNT := 5
+const ELITES_PER_STAGE := 3
+const SHOP_INPUT_LOCK := 0.5            # 가게가 열린 직후 이 시간 동안은 입력을 받지 않아요(초)
+const STAGE_CLEAR_DELAY := 1.8         # 마지막 강적을 잡고 가게가 열리기까지(초)
+# 최종 보스(마지막 스테이지의 마지막 강적). 지금은 강적의 강화판이에요.
+const BOSS_HP_MULT := 2.5
+const BOSS_STANCE_MULT := 0.6           # 약점이 옮겨 가는 간격 배율(작을수록 빨리 바뀜)
+const BOSS_SIZE := 1.35
+# 맞았을 때: 체력이 깎이는 대신 뭉치가 사방으로 흩어져요(뭉치가 없을 때만 체력이 깎임).
+const SCATTER_LOSS := 0.25              # 흩어진 몬스터 중 뒤로 빠져나가 잃는 비율
 const JUGGLE_SPAWN_SCALE := 1.6         # 몬스터 무리 간격 배율
 const OBSTACLE_INTERVAL_MIN := 1.5     # 장애물(강철벽·낭떠러지) 간격(초). 줄일수록 촘촘해요
 const OBSTACLE_INTERVAL_MAX := 2.3

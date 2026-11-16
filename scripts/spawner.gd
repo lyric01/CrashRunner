@@ -13,7 +13,7 @@ var table: Array = []
 
 func update(dt: float) -> void:
 	timer -= dt
-	if timer > 0.0 or table.is_empty() or game.stage_time > Config.ROAD_DURATION - 3.0:
+	if timer > 0.0 or table.is_empty():
 		return
 	var group: Array = table[0] if first else table.pick_random()
 	if not override.is_empty():

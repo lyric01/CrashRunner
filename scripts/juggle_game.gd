@@ -10,8 +10,12 @@ extends "res://scripts/game.gd"
 #   - 약점에 맞힐수록 "열기"가 올라 더 세고 빠르게 날아가요.
 #     튕겨 온 몬스터를 땅에 닿기 전에 받아치면 PERFECT로 열기가 더 올라요(덤).
 #   - 강적은 가끔 공을 빠르게(빠른 공) 또는 높고 느리게(높은 공) 돌려보내 박자를 바꿔요.
-#   - 강적이 선두에 닿으면 패배예요.
-#   - 진행도가 100%가 되면 끝나지 않고 다음 스테이지로 넘어가요. 뭉쳐 둔 몬스터는 그대로 가져가요.
+#   - 강적이 캐릭터에 닿으면 패배예요.
+#
+# 한 판: 스테이지 5개, 스테이지마다 강적 3번. 세 번째 강적을 잡으면 가게가 열리고 다음 스테이지로 넘어가요.
+#   - 뭉치는 탄환이면서 화폐예요. 가게에서 뭉치를 내고 강화를 사요.
+#   - 마지막 스테이지의 세 번째 강적이 최종 보스예요. 잡으면 승리.
+#   - 맞으면 체력 대신 뭉치가 사방으로 흩어져요. 대부분은 다시 모을 수 있고 일부는 뒤로 빠져나가요.
 
 const JUGGLE_GROUPS := [
 	[["orc", 0]],
@@ -28,6 +32,35 @@ const JUGGLE_GROUPS := [
 ]
 # 장애물(강철벽, 낭떠러지)은 몬스터 무리와 따로, 자기 박자로 나와요(_update_obstacles).
 const AIM_HOW := {"high": "뛰어오르며 치기", "mid": "땅에서 치기", "low": "떨어지며 치기"}
+# 말풍선 대사. 상황별로 하나를 무작위로 골라요.
+const GROANS := {
+	"hit": ["아야!", "으악!", "또야?!", "그만...", "살살 좀!", "악!", "왜 나만..."],
+	"idle": ["끄응...", "어지러워...", "멀미 나...", "집에 갈래...", "내려 줘...", "우웩...", "언제 끝나..."],
+	"send": ["으아아아!", "안 돼애애!", "대장님 피해요!", "날 쏘지 마!", "엄마아아!"],
+	"impact": ["죄송합니다!", "쿵!", "일부러 그런 게...", "아이고 대장님", "으깨진다..."],
+	"drop": ["철퍼덕!", "어이쿠!", "데굴데굴...", "살았다...?"],
+	"elite": ["크윽!", "이 녀석들이!", "배신자들!", "거기는 안 돼!"],
+}
+const GROANS_BY_KIND := {
+	"slime": {"hit": ["뿌잉!", "말랑...", "찌그러져..."], "idle": ["뿌잉...", "흐물흐물..."]},
+	"bat": {"hit": ["끼익!", "날개가!"], "idle": ["끼이...", "날 수가 없어..."]},
+}
+# 말풍선이 뜨는 자리(몬스터 머리 기준). 말풍선마다 서로 다른 자리를 써서 뭉치 여기저기에서 나와요.
+const BUBBLE_SLOTS := [
+	Vector2(-84, -30), Vector2(78, -46), Vector2(-14, -96), Vector2(118, 6),
+	Vector2(-124, 14), Vector2(44, -128), Vector2(-66, -134), Vector2(140, -86),
+]
+# 가게에서 파는 강화. cost: 첫 구매 값(마리), 살 때마다 +2. max: 최대 단계
+const UPGRADES := {
+	"wide": {"name": "넓은 휘두르기", "desc": "공격 범위 +25%", "cost": 5, "max": 3},
+	"magnet": {"name": "자석", "desc": "흩어진 몬스터가 더 빨리 돌아옴", "cost": 4, "max": 3},
+	"swarm": {"name": "몬스터 떼", "desc": "몬스터가 더 자주 나옴", "cost": 6, "max": 3},
+	"sturdy": {"name": "튼튼한 뭉치", "desc": "부딪혀도 덜 닳음", "cost": 6, "max": 3},
+	"pierce": {"name": "방패 뚫기", "desc": "막혀도 피해가 더 들어감", "cost": 5, "max": 2},
+	"focus": {"name": "약점 고정", "desc": "약점이 더 오래 머묾", "cost": 4, "max": 3},
+	"power": {"name": "묵직한 타격", "desc": "피해 +30%", "cost": 7, "max": 4},
+	"mass": {"name": "덩어리의 힘", "desc": "뭉치가 클수록 피해 증가", "cost": 8, "max": 3},
+}
 const AIM_NAME := {"high": "위", "mid": "가운데", "low": "아래"}
 const AIM_COLOR := {"high": Color("#6FD0FF"), "mid": Color("#FFD23D"), "low": Color("#FF8A4A")}
 const RETURN_LABEL := {"fast": ["빠른 공!", Color("#FF7A7A")], "lob": ["높은 공!", Color("#7FD6FF")]}
@@ -63,6 +96,8 @@ var drop_cd := 0.0
 var drops := 0             # 뭉치를 떨어뜨린 횟수
 var earlies := 0
 var lates := 0
+var bubbles: Array = []    # 떠 있는 말풍선 {m, text, t, off}
+var bubble_cd := 1.0
 var aim_serial := -1       # 이번 휘두르기의 겨냥을 이미 정했는지
 var aim_lane := "mid"      # 이번 휘두르기가 보내는 높이(high / mid / low)
 var lane_hits := {}        # 높이별 명중 수(통계)
@@ -70,7 +105,16 @@ var impact_i := 0          # 부딪힌 순서(묶음 나누기용)
 var obstacle_t := 2.5       # 다음 장애물까지 남은 시간
 var obstacles_spawned := 0
 var banner_t := 0.0       # 스테이지 전환 배너
-var max_stages := 0        # 0 = 끝없이. 자동 플레이 검증에서만 제한을 둬요
+var stage_elites := 0      # 이번 스테이지에 나온 강적 수
+var stage_kills := 0       # 이번 스테이지에 잡은 강적 수
+var clear_delay := 0.0     # 스테이지의 마지막 강적을 잡은 뒤 가게·승리까지 남은 시간
+var clump_total := 0       # 날아가는 중인 것까지 포함한 뭉치 전체 수
+var scatters := 0          # 맞아서 뭉치가 흩어진 횟수
+var ups := {}              # 산 강화: id -> 단계
+var shop_offers: Array = []    # 가게에 나온 강화 id 셋(산 자리는 "")
+var shop_note := ""
+var shop_note_t := 0.0
+var shop_lock_t := 0.0     # 가게가 열린 직후 입력을 받지 않는 시간
 
 # 통계
 var sends := 0
@@ -85,8 +129,7 @@ func _ready() -> void:
 	hitstop_gap = Config.HITSTOP_GAP # 여러 마리를 쳐도 화면이 연달아 멈추지 않아요
 	spawner.table = JUGGLE_GROUPS
 	spawner.interval_scale = Config.JUGGLE_SPAWN_SCALE
-	if "--autoplay" in OS.get_cmdline_user_args():
-		max_stages = 2
+	Config.drift_mult = 1.0
 
 
 func start_stage(ids: Array) -> void:
@@ -101,21 +144,41 @@ func _process(delta: float) -> void:
 	flash_t = maxf(0.0, flash_t - delta)
 	verdict_t = maxf(0.0, verdict_t - delta)
 	heat_hit_t = maxf(0.0, heat_hit_t - delta)
+	shop_note_t = maxf(0.0, shop_note_t - delta)
+	shop_lock_t = maxf(0.0, shop_lock_t - delta)
 	if not paused:
 		banner_t = maxf(0.0, banner_t - delta)
+	if state == State.SHOP:
+		hud.queue_redraw()
 
 
-# 진행도 100%: 판을 끝내지 않고 다음 스테이지로. 몬스터·열기·체력은 그대로 이어져요.
-func _finish(reason: String) -> void:
-	if reason == "clear" and (max_stages == 0 or stage < max_stages):
-		_next_stage()
-		return
-	super(reason)
+# ---------------------------------------------------------------- 한 판의 구조
+
+func lv(id: String) -> int:
+	return ups.get(id, 0)
+
+
+# 스테이지 진행도: 강적 3번을 기준으로 채워져요.
+func road_progress() -> float:
+	var n := float(Config.ELITES_PER_STAGE)
+	var part := 0.0
+	if elite_alive():
+		part = 0.5 + 0.5 * (1.0 - elite.hp / elite.max_hp)
+	elif stage_kills < Config.ELITES_PER_STAGE:
+		var total: float = Config.ELITE_FIRST if stage_elites == 0 else Config.ELITE_INTERVAL
+		part = 0.5 * clampf(1.0 - elite_timer / total, 0.0, 1.0)
+	return clampf((stage_kills + part) / n, 0.0, 1.0)
+
+
+func stage_label() -> String:
+	return "스테이지 %d/%d · 강적 %d/%d" % [stage, Config.STAGE_COUNT, stage_kills, Config.ELITES_PER_STAGE]
 
 
 func _next_stage() -> void:
 	stage += 1
 	stage_time = 0.0
+	stage_elites = 0
+	stage_kills = 0
 	elite_timer = Config.ELITE_FIRST
 	warn_t = 0.0
 	banner_t = Config.STAGE_BANNER_TIME
@@ -123,6 +186,119 @@ func _next_stage() -> void:
 	scroller.to_boss = stage % 2 == 0      # 스테이지마다 배경 색을 번갈아 바꿔요
 	score += 1000.0 * (stage - 1)
 	fx.shake(8.0, 0.25)
+
+
+# 지금 손에 있는 뭉치(날려 보낸 것은 빼고)
+func _ammo() -> Array:
+	var list: Array = []
+	for m in monsters.get_children():
+		if m.alive() and m.is_monster() and not m.shot and (m.state == "fly" or m.state == "groggy"):
+			list.append(m)
+	return list
+
+
+# ---------------------------------------------------------------- 가게
+
+func cost_of(id: String) -> int:
+	return int(UPGRADES[id]["cost"]) + 2 * lv(id)
+
+
+func _open_shop() -> void:
+	state = State.SHOP
+	var pool: Array = []
+	for id: String in UPGRADES:
+		if lv(id) < int(UPGRADES[id]["max"]):
+			pool.append(id)
+	pool.shuffle()
+	shop_offers = pool.slice(0, 3)
+	shop_note = ""
+	shop_lock_t = Config.SHOP_INPUT_LOCK
+
+
+# i번째 강화를 사요. 값만큼 뭉치에서 몬스터가 빠져나가요.
+func buy(i: int) -> void:
+	if state != State.SHOP or i < 0 or i >= shop_offers.size() or shop_offers[i] == "":
+		return
+	var id: String = shop_offers[i]
+	var cost := cost_of(id)
+	var ammo := _ammo()
+	if ammo.size() < cost:
+		shop_note = "뭉치가 모자라요 (%d마리 필요)" % cost
+		shop_note_t = 1.2
+		return
+	# 값은 약한 몬스터부터 내요.
+	ammo.sort_custom(func(a, b) -> bool:
+		return Config.AMMO_DAMAGE.get(a.kind, 1.0) < Config.AMMO_DAMAGE.get(b.kind, 1.0))
+	for k in cost:
+		_remove(ammo[k])
+	ups[id] = lv(id) + 1
+	shop_offers[i] = ""
+	shop_note = "%s 구매!" % UPGRADES[id]["name"]
+	shop_note_t = 1.2
+	_apply_upgrades()
+	_count_juggled()
+
+
+func _apply_upgrades() -> void:
+	player.reach_mult = 1.0 + 0.25 * lv("wide")
+	Config.drift_mult = 1.0 + 0.6 * lv("magnet")
+	spawner.interval_scale = Config.JUGGLE_SPAWN_SCALE * pow(0.8, lv("swarm"))
+
+
+func _close_shop() -> void:
+	if state != State.SHOP:
+		return
+	state = State.STAGE
+	_next_stage()
+
+
+func _stance_time() -> float:
+	var t: float = Config.ELITE_STANCE_TIME * (1.0 + 0.4 * lv("focus"))
+	if elite != null and elite.boss:
+		t *= Config.BOSS_STANCE_MULT
+	return t
+
+
+func _block_mult() -> float:
+	return minf(1.0, Config.BLOCK_MULT + 0.25 * lv("pierce"))
+
+
+# 강화로 붙는 피해 배율
+func _upgrade_dmg() -> float:
+	return (1.0 + 0.3 * lv("power")) * (1.0 + 0.015 * lv("mass") * clump_total)
+
+
+# ---------------------------------------------------------------- 피격
+
+# 맞으면 체력 대신 뭉치가 사방으로 흩어져요. 뭉치가 없을 때만 체력이 깎여요.
+# 대부분은 앞쪽으로 튀어서 다시 모을 수 있고, 일부는 뒤로 빠져나가 잃어요.
+func damage(n: int) -> void:
+	if invuln > 0.0 or state != State.STAGE:
+		return
+	var ammo := _ammo()
+	if ammo.is_empty():
+		super(n)
+		return
+	scatters += 1
+	invuln = Config.INVULN_TIME
+	slow_t = Config.HIT_SLOW_TIME
+	combo = 0
+	fx.shake(13.0, 0.3)
+	fx.star(Vector2(player.position.x + 40.0, player.y - 50.0), 1.8)
+	fx.text(Vector2(player.position.x + 60.0, player.y - 150.0), "와르르!", Color.WHITE, 34, 0.8)
+	for m in ammo:
+		var lost: bool = randf() < Config.SCATTER_LOSS
+		var svx: float = scroll - randf_range(260.0, 680.0) if lost else scroll + randf_range(120.0, 900.0)
+		m.launch(svx, -randf_range(480.0, 980.0))
+		m.groggy_t = Config.REBOUND_GROGGY
+		m.no_floor_t = 0.7
+		m.incoming = false
+		m.roll = false
+		m.set_meta("ret", false)
+		if lost:
+			m.hop = false         # 뒤로 빠져나간 몬스터는 돌아오지 않아요
+			m.no_floor_t = 9.0
+		_say(m, "drop", 0.2)
 
 
 func spawn(kind: String, x: float) -> Node2D:
@@ -148,6 +324,7 @@ func heat_mult() -> float:
 # ---------------------------------------------------------------- 진행
 
 func _update_stage(dt: float, rdt: float) -> void:
+	_update_bubbles(rdt)
 	player.air_stall = prof["stall"] and rallying()      # 체공은 강적전 중에만
 	_update_obstacles(dt)
 	warn_t -= dt
@@ -158,17 +335,23 @@ func _update_stage(dt: float, rdt: float) -> void:
 	rally_gap_t -= dt
 	if rally_gap_t <= 0.0:
 		rally = 0
-	if elite_alive():
-		# 강적이 남아 있으면 판이 끝나지 않아요(졸개도 계속 나와요).
-		stage_time = minf(stage_time, Config.ROAD_DURATION - 3.3)
+	if clear_delay > 0.0:
+		# 스테이지의 마지막 강적을 잡았어요. 잠깐 뒤 가게가 열려요(마지막 스테이지면 승리).
+		clear_delay -= rdt
+		if clear_delay <= 0.0:
+			if stage >= Config.STAGE_COUNT:
+				_finish("clear")
+				return
+			_open_shop()
+	elif elite_alive():
 		stance_t -= dt
 		if stance_t <= 0.0:
 			_change_stance()
-	else:
+	elif stage_elites < Config.ELITES_PER_STAGE:
 		elite_timer -= dt
 		if elite_timer <= Config.ELITE_WARN and elite_timer + dt > Config.ELITE_WARN:
 			warn_t = Config.ELITE_WARN
-		if elite_timer <= 0.0 and stage_time < Config.ROAD_DURATION - 6.0:
+		if elite_timer <= 0.0:
 			_spawn_elite()
 	super(dt, rdt)
 
@@ -178,8 +361,8 @@ func _update_obstacles(dt: float) -> void:
 	# 강적 페이즈에는 장애물이 나오지 않아요(랠리에만 집중).
 	# 강적이 나오기 직전에도 멈춰서, 등장할 때 화면에 남은 장애물이 없게 해요.
 	var elite_soon: bool = elite_timer < Config.OBSTACLE_STOP_BEFORE_ELITE \
-			and stage_time < Config.ROAD_DURATION - 6.0
-	if elite_alive() or elite_soon:
+			and stage_elites < Config.ELITES_PER_STAGE
+	if elite_alive() or elite_soon or clear_delay > 0.0:
 		obstacle_t = maxf(obstacle_t, Config.OBSTACLE_RESUME_DELAY)
 		return
 	obstacle_t -= dt
@@ -233,6 +416,7 @@ func _on_drop(dropped: Array) -> void:
 	fx.shake(4.0, 0.1)
 	# 떨어진 뭉치는 사방으로 흩어져요.
 	for m in dropped:
+		_say(m, "drop", 0.3)
 		m.launch(scroll + randf_range(-260.0, 420.0), -randf_range(420.0, 820.0))
 		m.groggy_t = Config.REBOUND_GROGGY
 		m.no_floor_t = 0.6
@@ -246,6 +430,10 @@ func _remove(m) -> void:
 
 
 func _count_juggled() -> void:
+	clump_total = 0
+	for m in monsters.get_children():
+		if m.alive() and m.is_monster() and m.state != "walk" and m.state != "down":
+			clump_total += 1
 	juggled = 0
 	for m in monsters.get_children():
 		if m.alive() and m.is_monster() and (m.state == "fly" or m.state == "groggy"):
@@ -272,6 +460,7 @@ func _attack_hit(m) -> void:
 	hitstop(Config.HITSTOP_HIT)
 	fx.burst(m.center(), m.color(), 3, 0.6)
 	register_hit(m.center(), Config.SCORE_HIT)
+	_say(m, "send" if rallying() else "hit", 0.22)
 	if was_juggled:
 		juggle_run += 1
 		max_juggle = maxi(max_juggle, juggle_run)
@@ -496,11 +685,28 @@ func _spawn_elite() -> void:
 	elite_timer = Config.ELITE_INTERVAL
 	elites_spawned += 1
 	elite = super.spawn("elite", 1400.0)
-	elite.max_hp = Config.ELITE_HP * (1.0 + Config.STAGE_ELITE_HP_GROWTH * (stage - 1))
+	stage_elites += 1
+	elite.max_hp = Config.ELITE_HP * (1.0 + Config.STAGE_ELITE_HP_GROWTH * (stage - 1)) \
+			* (1.0 + Config.ELITE_ORDER_HP_GROWTH * (stage_elites - 1))
+	if next_is_boss_now():
+		# 최종 보스: 지금은 강적의 강화판(더 크고, 더 단단하고, 약점이 더 빨리 움직임)
+		elite.boss = true
+		elite.max_hp *= Config.BOSS_HP_MULT
+		elite.w *= Config.BOSS_SIZE
+		elite.h *= Config.BOSS_SIZE
 	elite.hp = elite.max_hp
 	elite.approach = Config.ELITE_APPROACH
 	fx.shake(10.0, 0.3)
 	_change_stance()
+
+
+# 방금 나온(또는 곧 나올) 강적이 최종 보스인지
+func next_is_boss_now() -> bool:
+	return stage >= Config.STAGE_COUNT and stage_elites >= Config.ELITES_PER_STAGE
+
+
+func next_is_boss() -> bool:
+	return stage >= Config.STAGE_COUNT and stage_elites == Config.ELITES_PER_STAGE - 1
 
 
 # 약점을 다른 곳으로 옮겨요(같은 곳이 연달아 나오지 않음).
@@ -511,7 +717,7 @@ func _change_stance() -> void:
 		next = lanes.pick_random()
 	elite.weak = next
 	elite.squash = Vector2(1.15, 0.88)
-	stance_t = Config.ELITE_STANCE_TIME
+	stance_t = _stance_time()
 	# 판정 자리 근처에서 바로 보이게 알려요.
 	if aiming():
 		fx.text(Vector2(player.position.x + Config.RALLY_LAND - 40.0, Config.GROUND_Y - 210.0),
@@ -540,15 +746,16 @@ func _collide() -> void:
 		if since_impact > 0.35:
 			_pick_return()
 		since_impact = 0.0
-		var dmg: float = Config.AMMO_DAMAGE.get(m.kind, 1.0) * heat_mult() * prof["dmg"]
+		var dmg: float = Config.AMMO_DAMAGE.get(m.kind, 1.0) * heat_mult() * prof["dmg"] * _upgrade_dmg()
 		if m.get_meta("spike", false):
 			dmg *= Config.SPIKE_MULT
 		# 약점에 맞으면 피해가 크고, 방패에 맞으면 크게 줄어요(겨냥이 없는 캐릭터는 그대로).
 		var weak_hit: bool = aiming() and m.lane == elite.weak
 		if aiming():
-			dmg *= Config.WEAK_MULT if weak_hit else Config.BLOCK_MULT
+			dmg *= Config.WEAK_MULT if weak_hit else _block_mult()
 			if weak_hit:
 				weak_hits += 1
+				_say(elite, "elite", 0.05)
 				heat = minf(Config.HEAT_MAX, heat + Config.HEAT_WEAK)
 			else:
 				block_hits += 1
@@ -561,8 +768,9 @@ func _collide() -> void:
 		register_hit(hit_at, Config.SCORE_HIT)
 		# 몬스터는 사라지지 않고, 체력이 닳은 채 튕겨 돌아와요.
 		impact_i += 1
+		_say(m, "impact", 0.15)
 		_return(m, ret_type, impact_i % int(prof["waves"]))
-		_wear(m, Config.AMMO_WEAR.get(m.kind, 1.0))
+		_wear(m, Config.AMMO_WEAR.get(m.kind, 1.0) * pow(0.65, lv("sturdy")))
 	if total > 0.0:
 		if aiming() and AIM_NAME.has(last_lane):
 			fx.text(Vector2(elite.position.x - elite.w / 2.0 - 70.0,
@@ -603,6 +811,9 @@ func _kill_elite() -> void:
 			m.set_meta("ret", false)
 	elites_killed += 1
 	score += 2000.0
+	stage_kills += 1
+	if stage_kills >= Config.ELITES_PER_STAGE:
+		clear_delay = Config.STAGE_CLEAR_DELAY
 	e.hp = 0.0
 	e.state = "dying"
 	e.launch(Config.BLAST_VX, Config.BLAST_VY)
@@ -610,12 +821,16 @@ func _kill_elite() -> void:
 	fx.burst(e.center(), e.color(), 20, 1.3)
 	fx.shake(22.0, 0.5)
 	hitstop_t = Config.HITSTOP_BURST
-	fx.text(e.center() + Vector2(0, -130), "강적 격파!", ChibiDraw.GOLD, 52, 1.1)
+	fx.text(e.center() + Vector2(0, -130), "최종 보스 격파!" if e.boss else "강적 격파!", ChibiDraw.GOLD, 52, 1.1)
 
 
 func result_data() -> Dictionary:
 	var d := super()
 	d["elites"] = elites_killed
+	var bought := 0
+	for id: String in ups:
+		bought += int(ups[id])
+	d["upgrades"] = bought
 	return d
 
 
@@ -625,6 +840,184 @@ func debug_rows() -> Array:
 	rows.append("약점 명중 %d · 막힘 %d · PERFECT %d · 강적 %d/%d" % [
 		weak_hits, block_hits, perfects, elites_killed, elites_spawned])
 	return rows
+
+
+# ---------------------------------------------------------------- 가게 화면과 입력
+
+func shop_card_rect(i: int) -> Rect2:
+	return Rect2(205 + i * 300, 210, 270, 270)
+
+
+func shop_next_rect() -> Rect2:
+	return Rect2(490, 548, 300, 64)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if state == State.SHOP:
+		# 가게에서는 1 / 2 / 3(구매)과 Enter(다음 스테이지)만 받아요.
+		# 공격·점프 등 다른 키는 눌러도 아무 일도 일어나지 않아요(연타하다가 가게를 지나치지 않게).
+		# 열린 직후 잠깐은 그 키들도 받지 않아요.
+		if shop_lock_t > 0.0:
+			return
+		if event is InputEventScreenTouch:
+			if event.pressed:
+				if shop_next_rect().has_point(event.position):
+					_close_shop()
+				for i in 3:
+					if shop_card_rect(i).has_point(event.position):
+						buy(i)
+		elif event is InputEventKey and not event.echo:
+			if event.is_action_pressed("confirm"):
+				_close_shop()
+			else:
+				for i in 3:
+					if event.is_action_pressed("pick_%d" % (i + 1)):
+						buy(i)
+		return
+	super(event)
+
+
+func _draw_shop(ci: CanvasItem) -> void:
+	var have := _ammo().size()
+	ci.draw_rect(Rect2(0, 0, 1280, 720), Color(0.05, 0.06, 0.1, 0.78))
+	ChibiDraw.text(ci, Vector2(640, 92), "스테이지 %d 클리어" % stage, 48, ChibiDraw.GOLD, 1, true)
+	ChibiDraw.text(ci, Vector2(640, 136), "뭉치를 내고 강화를 사세요. 남긴 뭉치는 다음 스테이지로 가져가요.", 20,
+			Color(1, 1, 1, 0.8), 1)
+	ChibiDraw.text(ci, Vector2(640, 180), "가진 뭉치: %d마리" % have, 28, Color.WHITE, 1, true)
+	for i in shop_offers.size():
+		var r := shop_card_rect(i)
+		var id: String = shop_offers[i]
+		if id == "":
+			ChibiDraw.panel(ci, r, Color(0.1, 0.11, 0.15, 0.9), 14, Color(1, 1, 1, 0.12), 2)
+			ChibiDraw.text(ci, r.get_center() + Vector2(0, 8), "구매 완료", 24, Color(1, 1, 1, 0.4), 1, true)
+			continue
+		var u: Dictionary = UPGRADES[id]
+		var cost := cost_of(id)
+		var ok := have >= cost
+		ChibiDraw.panel(ci, r, Color(0.16, 0.18, 0.25) if ok else Color(0.11, 0.12, 0.17), 14,
+				ChibiDraw.GOLD if ok else Color(1, 1, 1, 0.18), 4 if ok else 2)
+		ChibiDraw.text(ci, Vector2(r.get_center().x, r.position.y + 62), u["name"], 28,
+				Color.WHITE if ok else Color(1, 1, 1, 0.55), 1, true)
+		ChibiDraw.text(ci, Vector2(r.get_center().x, r.position.y + 104), u["desc"], 17, Color(1, 1, 1, 0.8), 1)
+		ChibiDraw.text(ci, Vector2(r.get_center().x, r.position.y + 138), "단계 %d → %d (최대 %d)" % [
+			lv(id), lv(id) + 1, int(u["max"])], 15, Color(1, 1, 1, 0.55), 1)
+		ChibiDraw.panel(ci, Rect2(r.position.x + 55, r.position.y + 178, 160, 46),
+				ChibiDraw.ORANGE if ok else Color(0.25, 0.26, 0.3), 12)
+		ChibiDraw.text(ci, Vector2(r.get_center().x, r.position.y + 210), "%d마리" % cost, 24,
+				Color.WHITE if ok else Color(1, 1, 1, 0.5), 1, true)
+		ChibiDraw.text(ci, r.end + Vector2(-14, -12), "[%d]" % (i + 1), 15, Color(1, 1, 1, 0.5), 2)
+	if shop_note_t > 0.0:
+		ChibiDraw.text(ci, Vector2(640, 520), shop_note, 22, ChibiDraw.GOLD, 1, true, 6)
+	var b := shop_next_rect()
+	ChibiDraw.panel(ci, b, ChibiDraw.ORANGE, 14)
+	ChibiDraw.text(ci, b.get_center() + Vector2(0, 10), "다음 스테이지 (Enter)", 24, Color.WHITE, 1, true)
+	# 지금까지 산 강화
+	var owned: Array = []
+	for id: String in ups:
+		owned.append("%s %d" % [UPGRADES[id]["name"], ups[id]])
+	if not owned.is_empty():
+		ChibiDraw.text(ci, Vector2(640, 650), "보유: " + " · ".join(owned), 15, Color(1, 1, 1, 0.6), 1)
+
+
+# 검증용 자동 플레이의 가게 판단: 뭉치를 6마리는 남기면서 살 수 있는 것을 사고 넘어가요.
+func bot_shop() -> void:
+	for i in shop_offers.size():
+		var id: String = shop_offers[i]
+		if id != "" and _ammo().size() - cost_of(id) >= 6:
+			buy(i)
+			return
+	_close_shop()
+
+
+# ---------------------------------------------------------------- 말풍선(재미용)
+
+# 몬스터 m이 상황(what)에 맞는 대사를 말해요. chance는 말할 확률이에요.
+func _say(m, what: String, chance := 1.0) -> void:
+	if not Config.BUBBLES or bubbles.size() >= Config.BUBBLE_MAX or randf() > chance:
+		return
+	for b: Dictionary in bubbles:
+		if b.m == m:
+			return       # 이미 말하는 중
+	var lines: Array = GROANS[what]
+	var own: Dictionary = GROANS_BY_KIND.get(m.kind, {})
+	if own.has(what) and randf() < 0.6:
+		lines = own[what]
+	# 지금 떠 있는 말풍선이 쓰지 않는 자리 중 하나를 골라요.
+	var free: Array = []
+	for i in BUBBLE_SLOTS.size():
+		var used := false
+		for b: Dictionary in bubbles:
+			if b.slot == i:
+				used = true
+		if not used:
+			free.append(i)
+	var slot: int = free.pick_random() if not free.is_empty() else randi() % BUBBLE_SLOTS.size()
+	bubbles.append({"m": m, "text": lines.pick_random(), "t": 0.0, "slot": slot,
+			"jit": Vector2(randf_range(-12.0, 12.0), randf_range(-8.0, 8.0))})
+
+
+func _update_bubbles(rdt: float) -> void:
+	for b: Dictionary in bubbles:
+		b.t += rdt
+	bubbles = bubbles.filter(func(b: Dictionary) -> bool:
+		return b.t < Config.BUBBLE_TIME and is_instance_valid(b.m) and not b.m.dead)
+	# 가만히 튀고 있는 몬스터가 가끔 혼잣말을 해요.
+	bubble_cd -= rdt
+	if bubble_cd <= 0.0:
+		bubble_cd = randf_range(Config.BUBBLE_IDLE_MIN, Config.BUBBLE_IDLE_MAX)
+		var pool: Array = []
+		for m in monsters.get_children():
+			if m.alive() and m.is_monster() and not m.shot and (m.state == "fly" or m.state == "groggy"):
+				pool.append(m)
+		if not pool.is_empty():
+			_say(pool.pick_random(), "idle")
+
+
+func _draw_bubbles(ci: CanvasItem) -> void:
+	var gy := Config.GROUND_Y
+	var f := ChibiDraw.font()
+	var placed: Array = []      # 이미 그린 말풍선의 자리(겹침 방지용)
+	for b: Dictionary in bubbles:
+		var m = b.m
+		if not is_instance_valid(m) or m.dead:
+			continue
+		var a: float = clampf(minf(b.t / 0.1, (Config.BUBBLE_TIME - b.t) / 0.25), 0.0, 1.0)
+		var pop: float = 1.0 + maxf(0.0, 0.12 - b.t) * 2.5
+		var size := int(17 * pop)
+		var tw: float = f.get_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		var bw: float = tw + 20.0
+		# 말하는 몬스터의 머리에서, 이 말풍선의 자리만큼 떨어진 곳
+		var head := Vector2(m.position.x, gy - m.lift - m.h * 0.7)
+		var slot: Vector2 = BUBBLE_SLOTS[b.slot]
+		var c: Vector2 = head + slot + b.jit + Vector2(0, -b.t * 8.0)
+		c.x = clampf(c.x, bw / 2.0 + 12.0, 1280.0 - bw / 2.0 - 12.0)
+		c.y = clampf(c.y, 44.0, gy - 30.0)
+		var box := Rect2(c.x - bw / 2.0, c.y - 14.0, bw, 28.0)
+		# 다른 말풍선과 겹치면 위로 밀어 올려요.
+		for _i in 6:
+			var hit := false
+			for other: Rect2 in placed:
+				if box.grow(4.0).intersects(other):
+					box.position.y = other.position.y - box.size.y - 6.0
+					hit = true
+			if not hit:
+				break
+		box.position.y = maxf(box.position.y, 30.0)
+		placed.append(box)
+		var bc := box.get_center()
+		# 꼬리: 말풍선 가장자리에서 말하는 몬스터 쪽으로
+		var edge := Vector2(clampf(head.x, box.position.x + 12.0, box.end.x - 12.0),
+				clampf(head.y, box.position.y, box.end.y))
+		var to_m := head - edge
+		if to_m.length() > 6.0:
+			var dir := to_m.normalized()
+			var side := Vector2(-dir.y, dir.x)
+			var tip := edge + dir * minf(18.0, to_m.length() * 0.5)
+			var root := edge.lerp(bc, 0.25)
+			ci.draw_colored_polygon(PackedVector2Array([root + side * 7.0, root - side * 7.0, tip]),
+					Color(1, 1, 1, 0.95 * a))
+		ChibiDraw.panel(ci, box, Color(1, 1, 1, 0.95 * a), 11, Color(0.15, 0.15, 0.22, 0.85 * a), 2)
+		ChibiDraw.text(ci, Vector2(bc.x, bc.y + 6.0), b.text, size, Color(0.12, 0.12, 0.2, a), 1)
 
 
 # ---------------------------------------------------------------- 자동 플레이용
@@ -661,8 +1054,8 @@ func bot_step(_use_skills: bool) -> String:
 
 
 func bot_report(peak: int) -> String:
-	return "[juggle] %s(%s) · 스테이지 %d · 장애물 %d개 · 강적 %d/%d 격파 ·보내기 %d회(PERFECT %d, GOOD %d) · 최대 랠리 %d · 명중 %d · 최대 동시 %d마리" % [
-		Characters.name_of(party.lead()), prof["name"], stage, obstacles_spawned, elites_killed, elites_spawned, sends, perfects, goods, best_rally, impacts, peak] + (" · 겨냥 위 %d / 가운데 %d / 아래 %d · 약점 %d / 막힘 %d" % [
+	return "[juggle] %s(%s) · 스테이지 %d · 흩어짐 %d회 · 강화 %s · 장애물 %d개 · 강적 %d/%d 격파 ·보내기 %d회(PERFECT %d, GOOD %d) · 최대 랠리 %d · 명중 %d · 최대 동시 %d마리" % [
+		Characters.name_of(party.lead()), prof["name"], stage, scatters, str(ups), obstacles_spawned, elites_killed, elites_spawned, sends, perfects, goods, best_rally, impacts, peak] + (" · 겨냥 위 %d / 가운데 %d / 아래 %d · 약점 %d / 막힘 %d" % [
 		lane_hits.get("high", 0), lane_hits.get("mid", 0), lane_hits.get("low", 0), weak_hits, block_hits]) \
 			+ (" · 빠름 %d / 늦음 %d / 놓침 %d" % [earlies, lates, drops])
 
@@ -787,7 +1180,7 @@ func draw_hud_extra(ci: CanvasItem, pulse: float) -> void:
 	# 강적 체력
 	if elite_alive():
 		ChibiDraw.panel(ci, Rect2(410, 80, 460, 66), Color(0.3, 0.08, 0.1, 0.85))
-		ChibiDraw.text(ci, Vector2(426, 100), "강적", 15, Color.WHITE, 0, true)
+		ChibiDraw.text(ci, Vector2(426, 100), "최종 보스" if elite.boss else "강적", 15, Color.WHITE, 0, true)
 		var left: float = maxf(0.0, elite.position.x - elite.w / 2.0 - player.position.x)
 		ChibiDraw.text(ci, Vector2(854, 100), "거리 %dm" % int(left / Config.PX_PER_METER), 15, Color.WHITE, 2)
 		ChibiDraw.bar(ci, Rect2(426, 106, 428, 12), elite.hp / elite.max_hp, Color("#FF5A5A"))
@@ -798,7 +1191,9 @@ func draw_hud_extra(ci: CanvasItem, pulse: float) -> void:
 				Color.WHITE, 1, true)
 	elif warn_t > 0.0:
 		ChibiDraw.panel(ci, Rect2(340, 150, 600, 64), Color(0.75, 0.1, 0.12, 0.6 + glow * 0.3), 10)
-		ChibiDraw.text(ci, Vector2(640, 192), "강적 접근! 몬스터를 뭉치세요", 30, Color.WHITE, 1, true)
+		ChibiDraw.text(ci, Vector2(640, 192),
+				"최종 보스 접근! 몬스터를 뭉치세요" if next_is_boss() else "강적 접근! 몬스터를 뭉치세요",
+				30, Color.WHITE, 1, true)
 
 	# 열기
 	var ratio := heat / Config.HEAT_MAX
@@ -814,6 +1209,7 @@ func draw_hud_extra(ci: CanvasItem, pulse: float) -> void:
 		ChibiDraw.text(ci, Vector2(1190, 250), "랠리 x%d" % rally, 30, ChibiDraw.GOLD, 2, true, 8)
 	if juggled > 0:
 		ChibiDraw.text(ci, Vector2(1190, 280), "뭉친 몬스터 %d마리" % juggled, 16, Color.WHITE, 2, false, 6)
+	_draw_bubbles(ci)
 	if verdict_t > 0.0:
 		var vk := 1.0 - verdict_t / 0.3
 		ci.draw_arc(Vector2(rally_line(), gy - 45.0), 46.0 + vk * 120.0, 0.0, TAU, 44,
@@ -821,6 +1217,8 @@ func draw_hud_extra(ci: CanvasItem, pulse: float) -> void:
 	if flash_t > 0.0:
 		ci.draw_rect(Rect2(0, 0, 1280, 720),
 				Color(flash_col.r, flash_col.g, flash_col.b, 0.28 * minf(1.0, flash_t / 0.1)))
+	if state == State.SHOP:
+		_draw_shop(ci)
 	if banner_t > 0.0:
 		var k := clampf((Config.STAGE_BANNER_TIME - banner_t) / 0.15, 0.0, 1.0) * clampf(banner_t / 0.25, 0.0, 1.0)
 		ci.draw_rect(Rect2(0, 262, 1280, 96.0 * k), Color(0.1, 0.12, 0.2, 0.8))

@@ -3,7 +3,7 @@ extends Node2D
 # 캐릭터와 몬스터·장애물의 기본 판정, 입력.
 # 저글링과 랠리의 규칙은 이 위에 얹은 juggle_game.gd에 있어요.
 
-enum State { SELECT, STAGE, RESULT }
+enum State { SELECT, STAGE, RESULT, SHOP }
 
 const Monster := preload("res://scripts/monster.gd")
 
@@ -117,12 +117,11 @@ func _update_stage(dt: float, rdt: float) -> void:
 	_update_monsters(dt)
 	_collide()
 	_count_juggled()
-	if stage_time >= Config.ROAD_DURATION:
-		_finish("clear")
 
 
+# 스테이지 진행도(0~1). 규칙 쪽에서 채워요.
 func road_progress() -> float:
-	return clampf(stage_time / Config.ROAD_DURATION, 0.0, 1.0)
+	return 0.0
 
 
 func spawn(kind: String, x: float) -> Node2D:
@@ -318,7 +317,7 @@ func _on_tap(p: Vector2) -> void:
 # ---------------------------------------------------------------- 오버레이(일시정지, 디버그)
 
 func debug_rows() -> Array:
-	var names := ["선택", "스테이지", "결과"]
+	var names := ["선택", "스테이지", "결과", "가게"]
 	return [
 		"FPS %d" % Engine.get_frames_per_second(),
 		"상태: %s · 스테이지 %d · 몬스터 %d · 스크롤 %d px/s" % [

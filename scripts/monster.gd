@@ -21,6 +21,7 @@ const ORC := Color("#5E8C4A")
 const STEEL := Color("#7C8792")
 const ELITE := Color("#8E2F3C")
 const BAT := Color("#8A5BD6")
+const BOSS := Color("#4B2A7A")
 
 var kind := "slime"
 var w := 0.0
@@ -45,6 +46,7 @@ var volley := 0            # 같이 던져진 수(한방 판정용)
 var shot_t := 0.0          # 던져진 뒤 지난 시간 제한
 var no_floor_t := 0.0      # 튕겨 돌아오는 동안은 선두 앞에 머무는 보정을 끔
 var air_h := 0.0           # 0보다 크면 이 높이로 날아다니는 중(한 번 맞으면 0이 되어 떨어짐)
+var boss := false          # 최종 보스(색과 크기가 달라요)
 var grav := 1.0            # 중력 배율(공중에 천천히 떠 있게 할 때 낮춤)
 var incoming := false      # 강적에게서 튕겨 오는 중(땅에 닿기 전)
 var shot := false          # 강적에게 쳐 보낸 상태
@@ -102,7 +104,7 @@ func color() -> Color:
 		"slime": return SLIME
 		"orc": return ORC
 		"steel": return STEEL
-		"elite": return ELITE
+		"elite": return BOSS if boss else ELITE
 		"bat": return BAT
 	return WOOD
 
@@ -156,7 +158,7 @@ func update(dt: float, scroll: float) -> String:
 				vx -= vx * Config.KNOCK_DRAG * dt
 				# 저글링 모드: 그로기 동안에는 땅에 끌려가지 않고 선두 앞에서 천천히 다가와요.
 				if hop and groggy_t > 0.0 and no_floor_t <= 0.0:
-					vx = maxf(vx, scroll - Config.JUGGLE_DRIFT)
+					vx = maxf(vx, scroll - Config.JUGGLE_DRIFT * Config.drift_mult)
 			position.x += (vx - scroll) * dt
 			vy += Config.GRAVITY * grav * dt
 			lift -= vy * dt
@@ -240,11 +242,12 @@ func _draw() -> void:
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(-12, 12), Vector2(0, -14), Vector2(12, 12)]), Color("#22303C"))
 		"elite":
+			var ec := BOSS if boss else ELITE
 			var sway := 0.0 if hurt else sin(anim * 0.5) * 3.0
-			draw_rect(Rect2(-w / 2.0, -h / 2.0 + 44, w, h - 44), _c(ELITE, a))
-			draw_rect(Rect2(-w / 2.0, -h / 2.0 + 44, w, h - 44), _c(ELITE.darkened(0.45), a), false, 5.0)
-			draw_rect(Rect2(-40, -h / 2.0 + sway, 80, 56), _c(ELITE.lightened(0.12), a))
-			draw_rect(Rect2(-40, -h / 2.0 + sway, 80, 56), _c(ELITE.darkened(0.45), a), false, 5.0)
+			draw_rect(Rect2(-w / 2.0, -h / 2.0 + 44, w, h - 44), _c(ec, a))
+			draw_rect(Rect2(-w / 2.0, -h / 2.0 + 44, w, h - 44), _c(ec.darkened(0.45), a), false, 5.0)
+			draw_rect(Rect2(-40, -h / 2.0 + sway, 80, 56), _c(ec.lightened(0.12), a))
+			draw_rect(Rect2(-40, -h / 2.0 + sway, 80, 56), _c(ec.darkened(0.45), a), false, 5.0)
 			for hx: float in [-34.0, 22.0]:
 				draw_colored_polygon(PackedVector2Array([
 					Vector2(hx, -h / 2.0 + sway), Vector2(hx + 12, -h / 2.0 + sway),

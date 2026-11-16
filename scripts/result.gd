@@ -2,7 +2,7 @@ extends Node2D
 # 결과 화면: 다시 하기, 캐릭터 변경
 
 const TITLES := {
-	"clear": ["완주!", Color("#FFC23D")],      # 자동 플레이 검증에서만 나와요
+	"clear": ["최종 보스 격파!", Color("#FFC23D")],
 	"fail": ["실패", Color("#FF6A6A")],
 	"elite": ["강적을 막지 못했어요", Color("#FF6A6A")],
 	"timeout": ["시간 초과", Color("#B8C4CF")],
@@ -39,12 +39,12 @@ func _draw() -> void:
 		["거리", "%dm" % data.distance],
 		["점수", "%d" % data.score],
 		["최대 콤보", "%d" % data.max_combo],
-		["처치", "%d" % data.kills],
+		["산 강화", "%d개" % data.get("upgrades", 0)],
 		["강적 격파", "%d마리" % data.get("elites", 0)],
 		["최대 저글", "x%d" % data.max_juggle],
 	]
 	if data.has("stage"):
-		rows.insert(0, ["도달 스테이지", "%d" % data.stage])
+		rows.insert(0, ["도달 스테이지", "%d / %d" % [data.stage, Config.STAGE_COUNT]])
 	var step := 48.0 if rows.size() <= 6 else 41.0
 	for i in rows.size():
 		var y := 232.0 + i * step

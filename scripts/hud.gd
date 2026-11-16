@@ -22,7 +22,7 @@ func _draw() -> void:
 	# 가운데 위: 스테이지 진행
 	var p: float = game.road_progress()
 	ChibiDraw.panel(self, Rect2(410, 14, 460, 58), ChibiDraw.PANEL)
-	ChibiDraw.text(self, Vector2(426, 36), "스테이지 %d · 진행 %d%%" % [game.stage, int(p * 100.0)], 16)
+	ChibiDraw.text(self, Vector2(426, 36), game.stage_label(), 16)
 	ChibiDraw.bar(self, Rect2(426, 46, 428, 14), p, Color("#FFB03D"))
 
 	# 콤보, 저글

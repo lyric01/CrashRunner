@@ -5,7 +5,8 @@ extends Node
 #   --shots=<폴더>          : 주요 장면을 PNG로 저장
 #   --pattern=orc:0,bat:200 : 이 무리만 반복 스폰(패턴 실험용)
 #   --stop-after-elite=2    : 첫 강적을 잡고 2초 뒤에 종료(녹화용)
-# 게임 로직은 건드리지 않고 game의 입력 함수만 눌러요. 2스테이지를 마치면 끝나요.
+#   --hit-at=8              : 게임 시간 8초에 일부러 한 대 맞음(뭉치 흩어짐 확인용)
+# 게임 로직은 건드리지 않고 game의 입력 함수만 눌러요. 최종 보스를 잡거나 지면 끝나요.
 
 var game
 var shots_dir := ""
@@ -17,6 +18,8 @@ var last_run := 0
 var peak_air := 0          # 동시에 떠 있던 몬스터의 최대 수
 var stop_after_elite := -1.0   # 0 이상이면 첫 강적 격파 후 이 시간(초) 뒤 종료
 var elite_wait := 0.0
+var hit_at := -1.0         # 0 이상이면 이 시각에 일부러 한 대 맞음
+var hit_done := false
 var pick := ""             # --char= 로 지정한 캐릭터
 var bats_hit := 0          # 공중 적을 치려고 휘두른 횟수(프레임 기준, 참고용)
 var doubles := 0           # 더블 점프를 쓴 횟수
@@ -30,6 +33,8 @@ func _ready() -> void:
 			shots_dir = a.trim_prefix("--shots=")
 		elif a.begins_with("--stop-after-elite="):
 			stop_after_elite = float(a.trim_prefix("--stop-after-elite="))
+		elif a.begins_with("--hit-at="):
+			hit_at = float(a.trim_prefix("--hit-at="))
 		elif a.begins_with("--char="):
 			pick = a.trim_prefix("--char=")
 		elif a.begins_with("--pattern="):
@@ -54,9 +59,17 @@ func _process(delta: float) -> void:
 		wait += delta
 		_shot("select")
 		if wait > 0.6:
+			wait = 0.0
 			if pick != "":
 				game.select.picks = [pick]
 			game.select.confirm()
+		return
+	if game.state == game.State.SHOP:
+		_shot("shop")
+		wait += delta
+		if wait > 0.4:
+			wait = 0.0
+			game.bot_shop()
 		return
 	if game.state == game.State.RESULT:
 		done = true
@@ -72,6 +85,15 @@ func _process(delta: float) -> void:
 		get_tree().quit()
 		return
 
+	if hit_at >= 0.0 and not hit_done and game.stage_time >= hit_at:
+		hit_done = true
+		var before: int = game._ammo().size()
+		var hp0: int = game.hp
+		game.invuln = 0.0
+		game.damage(1)
+		print("[autoplay] 일부러 맞음: 뭉치 %d마리, 체력 %d → %d, 흩어짐 %d회" % [before, hp0, game.hp, game.scatters])
+	if hit_done and game.stage_time >= hit_at + 0.35:
+		_shot("scatter")
 	# 통계: 저글이 끊길 때마다 길이를 기록, 동시에 떠 있는 몬스터 수
 	if game.juggle_run == 0 and last_run > 0:
 		runs.append(last_run)

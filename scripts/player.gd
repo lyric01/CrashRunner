@@ -13,6 +13,7 @@ var air_jumps: int = Config.AIR_JUMPS   # 남은 공중 점프 횟수
 var swing_time: float = Config.ATTACK_DURATION     # 휘두르는 시간(캐릭터에 따라 달라질 수 있음)
 var cooldown_time: float = Config.ATTACK_COOLDOWN  # 다음 공격까지 걸리는 시간
 var air_stall := false      # 공중에서 휘두르는 동안 떨어지지 않음(토끼의 체공)
+var reach_mult := 1.0       # 공격 판정 폭 배율(강화 '넓은 휘두르기')
 var air_reach_down := false  # 공중 공격 판정을 바닥까지 늘림(저글링 모드)
 var swinging := false
 var atk_t := 0.0
@@ -110,7 +111,7 @@ func attack_rect() -> Rect2:
 	var top := y - 130.0
 	# 저글링 모드: 공중에서 휘두르면 바닥까지 내려쳐서 아래에 있는 몬스터도 맞아요.
 	var bottom := Config.GROUND_Y if air_reach_down and not on_ground else y
-	return Rect2(position.x - 10, top, Config.ATTACK_REACH, bottom - top)
+	return Rect2(position.x - 10, top, Config.ATTACK_REACH * reach_mult, bottom - top)
 
 
 func update(dt: float) -> void:
@@ -155,7 +156,7 @@ func _draw() -> void:
 	if swinging:
 		# 제자리 휘두르기: 앞쪽으로 퍼지는 베기 궤적(판정 폭과 같은 거리까지)
 		var p := clampf(atk_t / swing_time, 0.0, 1.0)
-		var reach: float = Config.ATTACK_REACH - 10.0
+		var reach: float = Config.ATTACK_REACH * reach_mult - 10.0
 		var a := 1.0 - p
 		var sweep := lerpf(-0.8, 0.5, p)      # 위에서 앞쪽 아래로 내려 긋기
 		for i in 3:
