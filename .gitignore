@@ -1,0 +1,7 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# 녹화 영상은 용량이 커서 저장소에 넣지 않아요
+recordings/*
+!recordings/.gdignore
