@@ -1,7 +1,8 @@
 class_name Characters
 # 캐릭터 데이터.
-# damage: 공격 배율, push: 일반 공격 넉백 배율
-# move / move_v: 연계 공격 이름과 날리는 방향(세계 기준 속도, 아래가 +)
+#   push: 평소 저글링에서 몬스터를 밀어내는 세기 배율
+#   desc: 캐릭터 선택 화면에 보이는 한 줄 설명
+# 랠리 방식의 차이는 아래 RALLY 표에 있어요.
 
 const ORDER: Array[String] = ["bear", "wolf", "cow", "rabbit"]
 
@@ -9,34 +10,22 @@ static var DATA := {
 	"bear": {
 		"name": "곰", "color": Color("#E8604C"), "ear": "round",
 		"ear_color": Color("#8A5A3C"), "hair": Color("#8A5A3C"),
-		"damage": 1.5, "push": 1.0,
-		"move": "내리찍기", "move_v": Vector2(1300, 500),
-		"desc": "공격력 1.5배",
-		"throw": "high", "throw_name": "내리꽂기", "desc3": "던지기: 위에서 내리꽂기", "desc2": "연계기: 내리찍어 튕기기",
+		"push": 1.0, "desc": "느리고 묵직한 한 방",
 	},
 	"wolf": {
 		"name": "늑대", "color": Color("#3D7BFF"), "ear": "pointy",
 		"ear_color": Color("#8E96A3"), "hair": Color("#AEB6C2"),
-		"damage": 1.0, "push": 1.0,
-		"move": "띄우기 베기", "move_v": Vector2(1150, -820),
-		"desc": "높이 띄우기",
-		"throw": "mid", "throw_name": "직선 던지기", "desc3": "던지기: 가운데로 곧게", "desc2": "연계기: 높이 띄워 멀리",
+		"push": 1.0, "desc": "빠른 연타",
 	},
 	"cow": {
 		"name": "소", "color": Color("#E8D9B0"), "ear": "horn",
 		"ear_color": Color("#5B4636"), "hair": Color("#5B4636"),
-		"damage": 1.0, "push": 1.4,
-		"move": "들이받기", "move_v": Vector2(2100, -300),
-		"desc": "멀리 밀어내기",
-		"throw": "low", "throw_name": "굴리기", "desc3": "던지기: 바닥으로 굴리기", "desc2": "연계기: 낮고 빠르게 들이받기",
+		"push": 1.4, "desc": "굴려서 강적 밀어내기",
 	},
 	"rabbit": {
 		"name": "토끼", "color": Color("#F2C6D3"), "ear": "long",
 		"ear_color": Color("#FFFFFF"), "hair": Color("#FFF4F7"),
-		"damage": 1.0, "push": 1.0,
-		"move": "공중 차기", "move_v": Vector2(1500, -520),
-		"desc": "점프 1.2배",
-		"throw": "scatter", "throw_name": "흩뿌리기", "desc3": "던지기: 위·가운데·아래로 흩뿌리기", "desc2": "연계기: 공중 차기",
+		"push": 1.0, "desc": "점프 1.2배",
 	},
 }
 
@@ -49,7 +38,7 @@ static func index_of(id: String) -> int:
 	return ORDER.find(id)
 
 
-# ---------------------------------------------------------------- 저글링 모드: 캐릭터별 랠리 방식
+# ---------------------------------------------------------------- 캐릭터별 랠리 방식
 # 여기에 없는 캐릭터와 빠진 값은 RALLY_DEFAULT를 써요.
 #   send      보내는 속도 배율
 #   ret       튕겨 돌아오는 시간 배율(클수록 느린 박자)

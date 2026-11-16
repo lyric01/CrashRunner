@@ -2,7 +2,7 @@
 
 플레이 테스트를 거치며 확정된 내용을 정리한 문서예요. 처음의 기획서(`DASH_RUNNER_PROTOTYPE.md`)와는 방향이 많이 달라졌고, 이 문서가 현재 기준이에요.
 
-- 기준 구현: 저글링 모드 (`scenes/juggle.tscn`, `scripts/juggle_game.gd`)
+- 기준 구현: `scenes/main.tscn`, `scripts/juggle_game.gd`
 - 기준 캐릭터: 곰
 - 엔진: Godot 4.7, GDScript. 그래픽은 아직 도형으로 그린 임시 그림이에요.
 - 수치는 2026-11-17 기준이고, 모두 `scripts/config.gd`와 `scripts/characters.gd`에 있어요.
@@ -213,7 +213,7 @@
 
 | 시도 | 뺀 이유 |
 |---|---|
-| 파티 3인 꼬리물기, 그로기마다 나가는 연계기 | 저글링 중심으로 방향을 바꿈. 연쇄 모드(`main.tscn`)로 남아 있음 |
+| 파티 3인 꼬리물기, 그로기마다 나가는 연계기(연쇄 모드) | 저글링 중심으로 방향을 바꿈. 코드에서도 삭제함(깃 기록 `d6c52da`에 남아 있음) |
 | 연계기 게이지 | 뭉친 몬스터 수가 곧 게이지라서 따로 필요 없었음 |
 | 몬스터끼리의 충돌(볼링) | 수십 마리 저글링을 막았음 |
 | 파티원마다 다른 던지기(위·가운데·아래 버튼) | 파티 조합이 의미가 없었음. 점프 타이밍 겨냥으로 대체 |
@@ -259,11 +259,12 @@
 
 | 파일 | 내용 |
 |---|---|
-| `scripts/config.gd` | 모든 수치. "저글링 모드" 구역이 이 문서의 내용 |
+| `scenes/main.tscn` | 게임 씬(하나뿐이에요) |
+| `scripts/config.gd` | 모든 수치. "저글링과 랠리" 구역이 이 문서의 내용 |
 | `scripts/characters.gd` | 캐릭터 데이터와 캐릭터별 랠리 설정(`RALLY`) |
-| `scripts/juggle_game.gd` | 저글링 모드의 규칙 |
-| `scripts/game.gd` | 두 모드가 같이 쓰는 기본 규칙(연쇄 모드 포함) |
+| `scripts/juggle_game.gd` | 저글링과 랠리의 규칙 |
+| `scripts/game.gd` | 기본 뼈대(상태, 시간, 점수, 입력, 기본 판정) |
 | `scripts/monster.gd` | 몬스터·장애물의 움직임과 그림 |
 | `scripts/player.gd` | 캐릭터의 점프와 공격 |
-| `scripts/autoplay.gd` | 검증용 자동 플레이. `-- --autoplay --juggle --char=bear` |
+| `scripts/autoplay.gd` | 검증용 자동 플레이. `-- --autoplay --char=bear` |
 | `_old_v1/` | 처음 만든 보스전 프로토타입 보관 |

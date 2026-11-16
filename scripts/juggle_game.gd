@@ -1,5 +1,5 @@
 extends "res://scripts/game.gd"
-# 저글링 모드. 공용 게임 규칙(game.gd) 위에 이 모드의 차이만 얹어요.
+# 저글링과 랠리의 규칙. 기본 뼈대(game.gd) 위에 얹혀 있어요.
 #
 # 조작은 점프와 공격 두 개뿐이에요.
 #   - 평소: 일반 공격은 피해 없이 몬스터를 살짝 띄워 그로기로 만들어요. 계속 치면 선두 앞에 뭉쳐요.
@@ -81,26 +81,12 @@ var impacts := 0
 
 func _ready() -> void:
 	super()
-	run_label = "저글"
 	player.air_reach_down = true     # 점프 중 공격이 바닥까지 닿아요
-	bowling = false                  # 몬스터·장애물끼리는 서로 통과해요
 	hitstop_gap = Config.HITSTOP_GAP # 여러 마리를 쳐도 화면이 연달아 멈추지 않아요
 	spawner.table = JUGGLE_GROUPS
 	spawner.interval_scale = Config.JUGGLE_SPAWN_SCALE
 	if "--autoplay" in OS.get_cmdline_user_args():
 		max_stages = 2
-
-
-func mode() -> String:
-	return "juggle"
-
-
-func mode_name() -> String:
-	return "저글링 모드"
-
-
-func party_size() -> int:
-	return 1
 
 
 func start_stage(ids: Array) -> void:
@@ -259,14 +245,13 @@ func _remove(m) -> void:
 	super(m)
 
 
-func _pick_chain() -> void:
-	chain_target = null
+func _count_juggled() -> void:
 	juggled = 0
 	for m in monsters.get_children():
 		if m.alive() and m.is_monster() and (m.state == "fly" or m.state == "groggy"):
 			juggled += 1
 	if juggled == 0:
-		chain_run = 0
+		juggle_run = 0
 
 
 # ---------------------------------------------------------------- 일반 공격 / 보내기
@@ -288,8 +273,8 @@ func _attack_hit(m) -> void:
 	fx.burst(m.center(), m.color(), 3, 0.6)
 	register_hit(m.center(), Config.SCORE_HIT)
 	if was_juggled:
-		chain_run += 1
-		max_chain = maxi(max_chain, chain_run)
+		juggle_run += 1
+		max_juggle = maxi(max_juggle, juggle_run)
 	if rallying():
 		# 강적전: 친 몬스터는 강적에게 날아가요. 튕겨 온 걸 땅에 닿기 전에 쳤으면 PERFECT
 		var perfect := _is_perfect(m)
@@ -588,7 +573,7 @@ func _collide() -> void:
 		fx.text(hit_at + Vector2(randf_range(-24, 24), -50), str(int(round(total))),
 				ChibiDraw.GOLD if heat >= 3.0 else Color.WHITE, 28 + int(heat), 0.5)
 		fx.shake(6.0 + heat, 0.14)
-		hitstop(Config.HITSTOP_BOWL)
+		hitstop(Config.HITSTOP_IMPACT)
 		elite.flash = 0.12
 		elite.squash = Config.HIT_SQUASH
 		if elite.hp <= 0.0:
@@ -626,6 +611,20 @@ func _kill_elite() -> void:
 	fx.shake(22.0, 0.5)
 	hitstop_t = Config.HITSTOP_BURST
 	fx.text(e.center() + Vector2(0, -130), "강적 격파!", ChibiDraw.GOLD, 52, 1.1)
+
+
+func result_data() -> Dictionary:
+	var d := super()
+	d["elites"] = elites_killed
+	return d
+
+
+func debug_rows() -> Array:
+	var rows := super()
+	rows.append("뭉친 몬스터 %d마리 · 열기 %.1f (피해 x%.1f) · 랠리 x%d" % [juggled, heat, heat_mult(), rally])
+	rows.append("약점 명중 %d · 막힘 %d · PERFECT %d · 강적 %d/%d" % [
+		weak_hits, block_hits, perfects, elites_killed, elites_spawned])
+	return rows
 
 
 # ---------------------------------------------------------------- 자동 플레이용

@@ -73,7 +73,7 @@ static func dashed_rect(ci: CanvasItem, r: Rect2, col: Color, width := 2.0, dash
 	ci.draw_dashed_line(d, a, col, width, dash)
 
 
-# 길·보스 HUD 공용: 점프, 돌진, 일시정지 버튼
+# 화면 버튼: 점프, 공격, 일시정지
 static func hud_buttons(ci: CanvasItem, dash_dim: bool) -> void:
 	circle_button(ci, Config.JUMP_BTN, Config.JUMP_BTN_R, Color(0.2, 0.24, 0.33), "점프", 26)
 	circle_button(ci, Config.ATTACK_BTN, Config.ATTACK_BTN_R, ORANGE, "공격", 34, dash_dim)

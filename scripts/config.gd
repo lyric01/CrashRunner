@@ -3,8 +3,8 @@ extends Node
 # 모든 튜닝 값은 여기에서만 관리해요.
 
 # --- 판 사이에 유지되는 값 ---
-var party: Array = ["bear", "wolf", "cow"]   # 0번이 선두(조종하는 캐릭터)
-var skip_select := false                     # "다시 하기"는 편성 화면을 건너뛰어요
+var party: Array = ["bear"]                 # 고른 캐릭터
+var skip_select := false                     # "다시 하기"는 캐릭터 선택을 건너뛰어요
 
 # --- 공통 ---
 const SCREEN_W := 1280.0
@@ -18,17 +18,14 @@ const AIR_JUMPS := 1                    # 공중에서 추가로 뛸 수 있는 
 const DOUBLE_JUMP_VELOCITY := -608.0    # 더블 점프 속도. 높이는 속도의 제곱에 비례해요(-860이면 지금의 2배 높이)
 const COYOTE_TIME := 0.12               # 낭떠러지로 떨어지기 시작한 뒤 이 시간 안에는 점프 가능(초)
 const PIT_RESCUE_DEPTH := 70.0          # 낭떠러지에 이만큼(px)보다 깊이 빠지면 더블 점프로도 못 나와요
-const PARTY_SIZE := 3
 const PARTY_HP := 10
 const INVULN_TIME := 0.8
-const FOLLOW_GAP := 74.0                # 꼬리물기 간격(px)
 
 # --- 공격 ---
 const ATTACK_DURATION := 0.22
 const ATTACK_COOLDOWN := 0.35
 const ATTACK_LUNGE := 0.0               # 휘두르며 앞으로 튀어나가는 거리(0 = 제자리에서 휘두름)
 const ATTACK_REACH := 230.0             # 몸 앞쪽 판정 폭(돌진이 없어진 만큼 넓혔어요)
-const ATTACK_DAMAGE := 2.0              # 캐릭터 배율 곱
 
 # --- 스테이지 ---
 const ROAD_DURATION := 60.0             # 한 판 길이(초)
@@ -48,9 +45,7 @@ const PIT_EDGE := 14.0                  # 낭떠러지 가장자리 여유(px)
 const SLIME_HP := 2.0                   # 약한 몬스터(핀)
 const ORC_HP := 12.0                    # 단단한 몬스터(공)
 
-# --- 1단계: 날아가는 연출 ---
-const KNOCKBACK_VX := 1600.0            # 맞는 순간 속도(세계 기준, 오른쪽 +)
-const KNOCKBACK_VY := -420.0            # 낮고 빠르게 날아가야 뒤 무리에 부딪혀요
+# --- 몬스터가 맞고 튀는 연출 ---
 const KNOCK_DRAG := 2.0                 # 초당 감속 비율(처음엔 빠르고 금방 느려짐)
 const HIT_SQUASH := Vector2(0.55, 1.4)  # 맞는 순간 찌그러짐
 const LAND_SQUASH := Vector2(1.4, 0.6)  # 땅에 닿는 순간 납작해짐
@@ -61,20 +56,9 @@ const MAX_BOUNCES := 2                  # 이만큼 튀고 멈춰요
 const RECOVER_TIME := 0.35              # 부딪히지 못하고 떨어졌을 때 일어나는 시간
 const WALL_X := 1240.0                  # 이보다 오른쪽으로는 안 나가요
 const HITSTOP_HIT := 0.07
-const HITSTOP_BOWL := 0.06
-const HITSTOP_CHAIN := 0.12
+const HITSTOP_IMPACT := 0.06            # 몬스터가 강적에 부딪혔을 때
 
-# --- 2단계: 충돌, 그로기, 연계기 ---
-const BOWL_DAMAGE := 2.0                # 날아온 몬스터에 부딪힌 쪽
-const BOWL_SELF_DAMAGE := 1.0           # 날아가다 부딪힌 쪽
-const BOWL_VX_KEEP := 0.5               # 부딪힌 뒤 남는 속도
-const GROGGY_POP := -520.0              # 부딪힌 순간 위로 튀는 속도
-const GROGGY_TIME := 1.5                # 그로기 지속(초)
-const CHAIN_DAMAGE := 3.0               # 캐릭터 배율 곱
-const CHAIN_COOLDOWN := 1.2             # 파티원별 연계기 재사용 시간
-const CHAIN_LIMIT := 0                  # 몬스터 하나가 연계기를 맞을 수 있는 횟수(0 = 제한 없음)
-
-# --- 저글링 모드(scenes/juggle.tscn) ---
+# --- 저글링과 랠리 ---
 # 흐름: 일반 공격으로 몬스터를 뭉친다 → 강적이 오면 쳐서 보낸다 → 튕겨 오는 뭉치를 받아친다(랠리)
 const JUGGLE_GROGGY := 2.0              # 맞고 날아간 뒤 그로기 시간(초)
 const HOP_VY := 560.0                   # 그로기 중 통통 튀는 최소 높이(속도)
@@ -133,7 +117,7 @@ const ELITE_FIRST := 12.0               # 첫 강적 등장 시각(초)
 const ELITE_INTERVAL := 16.0            # 강적을 잡은 뒤 다음 등장까지(초)
 const ELITE_WARN := 3.0                 # 등장 예고 시간(초)
 const STAGE_ELITE_HP_GROWTH := 0.25     # 스테이지가 오를 때마다 강적 체력 +25%
-const JUGGLE_SPAWN_SCALE := 1.6         # 몬스터 무리 간격 배율(장애물을 따로 내보내면서 몬스터 양을 예전 수준으로 맞춤)
+const JUGGLE_SPAWN_SCALE := 1.6         # 몬스터 무리 간격 배율
 const OBSTACLE_INTERVAL_MIN := 1.5     # 장애물(강철벽·낭떠러지) 간격(초). 줄일수록 촘촘해요
 const OBSTACLE_INTERVAL_MAX := 2.3
 const OBSTACLE_INTERVAL_FLOOR := 1.0    # 아무리 촘촘해져도 이보다 짧아지지 않아요(연속 점프가 가능한 한계)
@@ -145,8 +129,6 @@ const STAGE_BANNER_TIME := 1.8         # 스테이지 전환 배너 표시 시�
 const ELITE_PUSH := 3.0                 # 한 발 맞을 때마다 밀리는 거리(px)
 
 # --- 화면 버튼 위치 ---
-const CHAIN_BTN := Vector2(1000, 520)
-const CHAIN_BTN_R := 58.0
 const JUMP_BTN := Vector2(104, 622)
 const JUMP_BTN_R := 62.0
 const ATTACK_BTN := Vector2(1170, 612)
@@ -158,8 +140,6 @@ const PAUSE_BTN_R := 22.0
 const INPUTS := {
 	"attack": [KEY_D, KEY_RIGHT, KEY_J],
 	"jump": [KEY_SPACE, KEY_W, KEY_UP],
-	"chain": [KEY_F, KEY_K, KEY_S],
-	"mode": [KEY_M],
 	"pick_1": [KEY_1],
 	"pick_2": [KEY_2],
 	"pick_3": [KEY_3],

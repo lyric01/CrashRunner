@@ -1,16 +1,15 @@
 extends Node2D
 # 몬스터와 장애물 공통. 노드 원점 = (중심 x, 지면 y)
-# 종류: slime(약함, 핀) / orc(단단함, 공) / box(부서지는 상자)
+# 종류: slime(약함, 핀) / orc(단단함, 공)
 #       steel(뛰어넘는 강철벽) / pit(낭떠러지) / elite(강적, 저글링 모드)
 #       bat(공중 적: 맞기 전에는 머리 위 높이로 날아옴)
 # 상태: walk(다가옴) → fly(맞아서 날아감) → 땅에 멈춤
-#         날아가다 무언가와 부딪혔으면 groggy(연계기 가능), 아니면 down(잠깐 쓰러짐) → walk
+#         그로기 동안에는 계속 통통 튀고, 그로기가 풀리면 down(잠깐 쓰러짐) → walk
 #       공격으로 체력이 0이 되면 dying(통통 튀며 사라짐)
 
 const DEFS := {
 	"slime": {"size": Vector2(52, 38), "mass": 1.0},
 	"orc": {"size": Vector2(62, 86), "mass": 1.0},
-	"box": {"size": Vector2(56, 56), "mass": 1.0},
 	"steel": {"size": Vector2(54, 90), "mass": 1.0},
 	"pit": {"size": Vector2(210, 0), "mass": 1.0},
 	"elite": {"size": Vector2(120, 170), "mass": 1.0},
@@ -36,7 +35,7 @@ var vy := 0.0
 var rot := 0.0
 var bounces := 0
 var down_t := 0.0
-var groggy_t := 0.0        # 0보다 크면 그로기(연계기를 맞을 수 있음)
+var groggy_t := 0.0        # 0보다 크면 그로기(통통 튀는 상태)
 var approach := -1.0       # 0 이상이면 땅 속도 대신 이 속도로 다가옴(강적)
 var show_hp := true
 var lane := ""             # 탄환이 날아가는 길: high / mid / low
@@ -48,16 +47,14 @@ var no_floor_t := 0.0      # 튕겨 돌아오는 동안은 선두 앞에 머무�
 var air_h := 0.0           # 0보다 크면 이 높이로 날아다니는 중(한 번 맞으면 0이 되어 떨어짐)
 var grav := 1.0            # 중력 배율(공중에 천천히 떠 있게 할 때 낮춤)
 var incoming := false      # 강적에게서 튕겨 오는 중(땅에 닿기 전)
-var shot := false          # 연계기로 쏜 탄환
+var shot := false          # 강적에게 쳐 보낸 상태
 var hop := false           # 그로기 동안 계속 통통 튐(저글링 모드)
-var chain_hits := 0        # 연계기를 맞은 횟수
 var passed := false        # 선두와 이미 부딪힘
 var dead := false          # 노드 제거됨
 var hit_serial := -1       # 마지막으로 맞은 휘두르기 번호
-var bowled := {}           # 이번 비행에서 이미 부딪힌 대상
 var squash := Vector2.ONE  # 찌그러짐(맞는 순간, 땅에 닿는 순간)
 var trail: Array = []      # 잔상 위치(화면 좌표)
-var targeted := false      # 연계기 대상 표시
+var targeted := false      # 지금 치면 PERFECT인 몬스터 표시(흰 고리)
 var flash := 0.0
 var anim := 0.0
 
@@ -119,18 +116,7 @@ func launch(pvx: float, pvy: float) -> void:
 	grav = 1.0
 	bounces = 0
 	groggy_t = 0.0
-	bowled.clear()
 	lift = maxf(lift, 1.0)
-	squash = Config.HIT_SQUASH
-	flash = 0.12
-
-
-# 날아가다 부딪힘 → 위로 튀면서 그로기
-func stun() -> void:
-	groggy_t = Config.GROGGY_TIME
-	vx *= Config.BOWL_VX_KEEP
-	vy = Config.GROGGY_POP
-	bounces = 0
 	squash = Config.HIT_SQUASH
 	flash = 0.12
 
@@ -245,12 +231,6 @@ func _draw() -> void:
 	draw_set_transform(Vector2(0, cy), r_ang, squash)
 	var r := Rect2(-w / 2.0, -h / 2.0, w, h)
 	match kind:
-		"box":
-			draw_rect(r, _c(WOOD.lightened(0.08), a))
-			draw_rect(r, _c(WOOD.darkened(0.35), a), false, 4.0)
-			draw_line(r.position, r.end, _c(WOOD.darkened(0.35), a), 4.0)
-			draw_line(Vector2(r.end.x, r.position.y), Vector2(r.position.x, r.end.y),
-					_c(WOOD.darkened(0.35), a), 4.0)
 		"steel":
 			draw_rect(r, STEEL)
 			draw_rect(Rect2(r.position, Vector2(10, h)), STEEL.lightened(0.25))
@@ -330,7 +310,7 @@ func _draw() -> void:
 			var sp := Vector2(cos(ang) * 26.0, top - 34.0 + sin(ang) * 7.0)
 			draw_circle(sp, 6.0, ChibiDraw.GOLD)
 			draw_circle(sp, 2.5, Color.WHITE)
-		ChibiDraw.bar(self, Rect2(-34, top - 8, 68, 5), groggy_t / Config.GROGGY_TIME, ChibiDraw.GOLD)
+		ChibiDraw.bar(self, Rect2(-34, top - 8, 68, 5), groggy_t / Config.REBOUND_GROGGY, ChibiDraw.GOLD)
 		if targeted:
 			var c := Vector2(0, -lift - h / 2.0)
 			var rad := maxf(w, h) * 0.75 + sin(anim * 2.0) * 4.0
